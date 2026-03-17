@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Spinner } from "@/components/Spinner";
 import { z } from "zod";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -45,26 +46,36 @@ export function JoinForm() {
   };
 
   return (
-    <form className="w-full space-y-4 rounded-2xl bg-white p-6 shadow-md" onSubmit={handleSubmit}>
+    <form
+      className="surface reveal-up w-full space-y-4 rounded-2xl p-6 shadow-2xl shadow-black/25"
+      onSubmit={handleSubmit}
+    >
       <label className="block text-sm font-semibold text-brand-800" htmlFor="name">
         Nombre
       </label>
       <input
         id="name"
         aria-label="Nombre del participante"
-        className="w-full rounded-lg border border-brand-300 px-4 py-3 outline-none focus:border-brand-500"
+        className="w-full rounded-xl border border-brand-300 bg-brand-100/70 px-4 py-3 text-brand-900 outline-none placeholder:text-brand-600 focus:border-primary-500"
         placeholder="Ejemplo: Ana"
         value={name}
         onChange={(event) => setName(event.target.value)}
       />
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p className="text-sm text-red-400">{error}</p> : null}
       <button
         aria-label="Entrar a la demo"
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg bg-brand-700 px-4 py-3 font-semibold text-white transition hover:bg-brand-800 disabled:opacity-70"
+        className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 font-semibold transition disabled:opacity-70"
       >
-        {loading ? "Creando usuario..." : "Entrar"}
+        {loading ? (
+          <>
+            <Spinner size="sm" />
+            Creando usuario...
+          </>
+        ) : (
+          "Entrar"
+        )}
       </button>
     </form>
   );

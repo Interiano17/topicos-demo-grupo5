@@ -10,6 +10,7 @@
     "format": "prettier --write .",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
+    "posters:tmdb": "node scripts/fetch_tmdb_posters.mjs",
     "prepare": "husky"
   },
   "dependencies": {

@@ -10,8 +10,12 @@ CREATE TABLE IF NOT EXISTS public.movies (
   title text NOT NULL,
   genre_id integer REFERENCES public.genres(id) ON DELETE SET NULL,
   tags text[] DEFAULT '{}',
-  popularity integer DEFAULT 0
+  popularity integer DEFAULT 0,
+  image_url text
 );
+
+ALTER TABLE public.movies
+ADD COLUMN IF NOT EXISTS image_url text;
 
 CREATE TABLE IF NOT EXISTS public.users_temp (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

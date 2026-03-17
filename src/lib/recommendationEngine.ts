@@ -5,6 +5,7 @@ export type Movie = {
   genre_id: number;
   tags: string[];
   popularity?: number;
+  image_url?: string | null;
 };
 export type Choices = { genres: number[]; movies: number[] };
 export type ExplanationReason = { type: string; detail: string };

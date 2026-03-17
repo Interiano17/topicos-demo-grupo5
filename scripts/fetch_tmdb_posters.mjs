@@ -1,0 +1,179 @@
+#!/usr/bin/env node
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import process from "node:process";
+
+const TMDB_BASE = "https://api.themoviedb.org/3";
+const TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w500";
+
+const TITLE_OVERRIDES = {
+  "Her (romance sci-fi)": { query: "Her", year: 2013 },
+  Dune: { query: "Dune", year: 2021 },
+  Avatar: { query: "Avatar", year: 2009 },
+  It: { query: "It", year: 2017 },
+  "The Ring": { query: "The Ring", year: 2002 },
+  "Pride and Prejudice": { query: "Pride and Prejudice", year: 2005 },
+  "The Mask": { query: "The Mask", year: 1994 },
+  "The Raid": { query: "The Raid", year: 2011 },
+  "Suspiria": { query: "Suspiria", year: 2018 },
+};
+
+function extractTitlesFromSeed(sqlContent) {
+  const insertStart = sqlContent.indexOf("INSERT INTO public.movies");
+  if (insertStart === -1) return [];
+
+  const insertBlock = sqlContent.slice(insertStart);
+  const tuples = [...insertBlock.matchAll(/\('((?:''|[^'])*)'\s*,\s*\d+\s*,/g)];
+  return tuples.map((m) => m[1].replace(/''/g, "'"));
+}
+
+function normalize(str) {
+  return str
+    .toLowerCase()
+    .replace(/\(.*?\)/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function chooseBestResult(originalTitle, results) {
+  if (!results.length) return null;
+
+  const normalizedOriginal = normalize(originalTitle);
+  const exact = results.find((r) => normalize(r.title || "") === normalizedOriginal && r.poster_path);
+  if (exact) return exact;
+
+  const startsWith = results.find(
+    (r) => normalize(r.title || "").startsWith(normalizedOriginal) && r.poster_path,
+  );
+  if (startsWith) return startsWith;
+
+  return results.find((r) => r.poster_path) ?? null;
+}
+
+async function searchMovie(title, token, apiKey) {
+  const override = TITLE_OVERRIDES[title] ?? { query: title };
+
+  const params = new URLSearchParams({
+    query: override.query,
+    include_adult: "false",
+    language: "en-US",
+    page: "1",
+  });
+  if (override.year) params.set("year", String(override.year));
+  if (apiKey) params.set("api_key", apiKey);
+
+  const url = `${TMDB_BASE}/search/movie?${params.toString()}`;
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    throw new Error(`TMDB search failed for \"${title}\": ${response.status} ${response.statusText}`);
+  }
+
+  const payload = await response.json();
+  const results = Array.isArray(payload?.results) ? payload.results : [];
+  return chooseBestResult(title, results);
+}
+
+function escSql(str) {
+  return str.replace(/'/g, "''");
+}
+
+async function loadEnvFile(envPath) {
+  try {
+    const content = await readFile(envPath, "utf-8");
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+
+      const idx = trimmed.indexOf("=");
+      if (idx === -1) continue;
+
+      const key = trimmed.slice(0, idx).trim();
+      let value = trimmed.slice(idx + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+
+      if (!(key in process.env)) {
+        process.env[key] = value;
+      }
+    }
+  } catch {
+    // Ignore missing env files.
+  }
+}
+
+async function main() {
+  const workspaceRoot = process.cwd();
+  const seedPath = path.join(workspaceRoot, "scripts", "seed_movies.sql");
+  const outputPath = path.join(workspaceRoot, "scripts", "update_movie_posters.sql");
+
+  await loadEnvFile(path.join(workspaceRoot, ".env.local"));
+  await loadEnvFile(path.join(workspaceRoot, ".env"));
+
+  const bearerToken = process.env.TMDB_BEARER_TOKEN;
+  const apiKey = process.env.TMDB_API_KEY;
+
+  if (!bearerToken && !apiKey) {
+    throw new Error(
+      [
+        "TMDB credentials not found.",
+        "Define TMDB_API_KEY or TMDB_BEARER_TOKEN in .env.local/.env, or run with inline vars:",
+        "TMDB_API_KEY=xxxx npm run posters:tmdb",
+      ].join("\n"),
+    );
+  }
+
+  const seedContent = await readFile(seedPath, "utf-8");
+  const titles = extractTitlesFromSeed(seedContent);
+
+  if (!titles.length) {
+    throw new Error("No movie titles found in scripts/seed_movies.sql");
+  }
+
+  const updates = [];
+  const notFound = [];
+
+  for (const title of titles) {
+    try {
+      const match = await searchMovie(title, bearerToken, apiKey);
+      if (!match?.poster_path) {
+        notFound.push(title);
+        continue;
+      }
+
+      const imageUrl = `${TMDB_IMG_BASE}${match.poster_path}`;
+      updates.push(
+        `UPDATE public.movies SET image_url = '${escSql(imageUrl)}' WHERE title = '${escSql(title)}';`,
+      );
+      console.log(`OK   ${title} -> ${imageUrl}`);
+    } catch (error) {
+      notFound.push(title);
+      console.warn(`MISS ${title} -> ${String(error)}`);
+    }
+  }
+
+  const sql = [
+    "-- Auto-generated by scripts/fetch_tmdb_posters.mjs",
+    "BEGIN;",
+    ...updates,
+    "COMMIT;",
+    "",
+  ].join("\n");
+
+  await writeFile(outputPath, sql, "utf-8");
+
+  console.log(`\nGenerated ${updates.length} updates in scripts/update_movie_posters.sql`);
+  if (notFound.length) {
+    console.log("\nTitles without poster match:");
+    for (const title of notFound) {
+      console.log(`- ${title}`);
+    }
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

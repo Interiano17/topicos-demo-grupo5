@@ -3,8 +3,18 @@
 @tailwind utilities;
 
 :root {
-  --bg: #f6f2e8;
-  --text: #2f2411;
+  --bg: #000000;
+  --surface: #121212;
+  --surface-strong: #1a1a1a;
+  --primary: #1db954;
+  --primary-dark: #169c46;
+  --danger: #ff0000bf;
+  --danger-dark: #cc000094;
+  --info: #17a2b8;
+  --info-dark: #138496;
+  --text: #f5f5f5;
+  --text-muted: #b3b3b3;
+  --border: #2a2a2a;
 }
 
 * {
@@ -18,10 +28,64 @@ body {
   min-height: 100%;
   background: var(--bg);
   color: var(--text);
+  font-family: var(--font-ui), "Space Grotesk", "Segoe UI", sans-serif;
 }
 
 button,
 input,
 select {
   font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+.surface {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 2%) inset;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: var(--primary-dark);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.btn-danger:hover {
+  background: var(--danger-dark);
+}
+
+.btn-info {
+  background: var(--info);
+  color: #ffffff;
+}
+
+.btn-info:hover {
+  background: var(--info-dark);
+}
+
+.reveal-up {
+  animation: reveal-up 0.55s ease-out both;
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

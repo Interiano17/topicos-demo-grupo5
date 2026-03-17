@@ -13,6 +13,8 @@ type Props = {
   similarityThreshold: number;
 };
 
+const NODE_COLORS = ["#7c3aed", "#5b21b6", "#3b82f6", "#22d3ee"];
+
 export function AdminGraph({ users, choices, similarityThreshold }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -28,9 +30,13 @@ export function AdminGraph({ users, choices, similarityThreshold }: Props) {
       return acc;
     }, {});
 
-    const nodes = users.map((user) => ({
-      data: { id: user.id, label: user.name },
-    }));
+    const nodes = users.map((user, idx) => {
+      const color = NODE_COLORS[idx % NODE_COLORS.length];
+      const textColor = idx % NODE_COLORS.length === 3 ? "#0f172a" : "#f8fafc";
+      return {
+        data: { id: user.id, label: user.name, color, textColor },
+      };
+    });
 
     const edges: { data: { source: string; target: string; label: string } }[] = [];
     for (let i = 0; i < users.length; i += 1) {
@@ -58,8 +64,8 @@ export function AdminGraph({ users, choices, similarityThreshold }: Props) {
           selector: "node",
           style: {
             label: "data(label)",
-            "background-color": "#6b5223",
-            color: "#2f2411",
+            "background-color": "data(color)",
+            color: "data(textColor)",
             "text-valign": "center",
             "text-halign": "center",
             "font-size": 10,
@@ -71,12 +77,12 @@ export function AdminGraph({ users, choices, similarityThreshold }: Props) {
           selector: "edge",
           style: {
             width: 2,
-            "line-color": "#b99a51",
-            "target-arrow-color": "#b99a51",
+            "line-color": "#3D3D3D",
+            "target-arrow-color": "#3D3D3D",
             "curve-style": "bezier",
             label: "data(label)",
             "font-size": 9,
-            color: "#6b5223",
+            color: "#DEDEDE",
           },
         },
       ],
@@ -94,7 +100,7 @@ export function AdminGraph({ users, choices, similarityThreshold }: Props) {
   return (
     <div
       ref={containerRef}
-      className="h-[340px] w-full rounded-xl border border-brand-200 bg-white"
+      className="h-[340px] w-full rounded-xl border border-brand-300 bg-brand-100/50"
     />
   );
 }

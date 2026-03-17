@@ -4,13 +4,8 @@ import { useEffect, useState } from "react";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { RecommendationsCard } from "@/components/RecommendationsCard";
-import {
-  generateRecommendationsForAll,
-  type Choices,
-  type ExplanationItem,
-  type Movie,
-  type User,
-} from "@/lib/recommendationEngine";
+import { Spinner } from "@/components/Spinner";
+import { type ExplanationItem, type Movie } from "@/lib/recommendationEngine";
 import { supabase } from "@/lib/supabaseClient";
 
 type RecommendationRow = {
@@ -20,16 +15,17 @@ type RecommendationRow = {
   version: number;
 };
 
+type Genre = { id: number; name: string };
+
 export default function ResultsPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [movies, setMovies] = useState<Movie[]>([]);
   const [participants, setParticipants] = useState(0);
   const [genreCounts, setGenreCounts] = useState<Record<number, number>>({});
+  const [genreNames, setGenreNames] = useState<Record<number, string>>({});
+  const [loadingOverview, setLoadingOverview] = useState(true);
+  const [loadingRecommendation, setLoadingRecommendation] = useState(false);
   const [recommendation, setRecommendation] = useState<RecommendationRow | null>(null);
-  const [provisional, setProvisional] = useState<{
-    items: number[];
-    explanation: ExplanationItem[];
-  } | null>(null);
 
   useEffect(() => {
     setUserId(localStorage.getItem("sim_user_id"));
@@ -37,25 +33,45 @@ export default function ResultsPage() {
 
   useEffect(() => {
     const bootstrap = async () => {
-      const [{ data: movieRows }, { count: usersCount }, { data: genreRows }] = await Promise.all([
-        supabase
-          .from("movies")
-          .select("id,title,genre_id,tags,popularity")
-          .order("id", { ascending: true }),
-        supabase.from("users_temp").select("id", { count: "exact", head: true }),
-        supabase.from("user_genres").select("genre_id"),
-      ]);
+      setLoadingOverview(true);
+      try {
+        const [{ data: movieRows }, { count: usersCount }, { data: genreRows }] = await Promise.all(
+          [
+            supabase
+              .from("movies")
+              .select("id,title,genre_id,tags,popularity,image_url")
+              .order("id", { ascending: true }),
+            supabase.from("users_temp").select("id", { count: "exact", head: true }),
+            supabase.from("user_genres").select("genre_id"),
+          ],
+        );
 
-      setMovies((movieRows as Movie[]) ?? []);
-      setParticipants(usersCount ?? 0);
-      const counts = ((genreRows as { genre_id: number }[]) ?? []).reduce<Record<number, number>>(
-        (acc, row) => {
-          acc[row.genre_id] = (acc[row.genre_id] ?? 0) + 1;
-          return acc;
-        },
-        {},
-      );
-      setGenreCounts(counts);
+        const { data: genreCatalogRows } = await supabase
+          .from("genres")
+          .select("id,name")
+          .order("id", { ascending: true });
+
+        setMovies((movieRows as Movie[]) ?? []);
+        setParticipants(usersCount ?? 0);
+        const counts = ((genreRows as { genre_id: number }[]) ?? []).reduce<Record<number, number>>(
+          (acc, row) => {
+            acc[row.genre_id] = (acc[row.genre_id] ?? 0) + 1;
+            return acc;
+          },
+          {},
+        );
+        setGenreCounts(counts);
+        const names = ((genreCatalogRows as Genre[]) ?? []).reduce<Record<number, string>>(
+          (acc, row) => {
+            acc[row.id] = row.name;
+            return acc;
+          },
+          {},
+        );
+        setGenreNames(names);
+      } finally {
+        setLoadingOverview(false);
+      }
     };
 
     void bootstrap();
@@ -65,14 +81,19 @@ export default function ResultsPage() {
     if (!userId) return;
 
     const fetchRecommendation = async () => {
-      const { data } = await supabase
-        .from("recommendations")
-        .select("user_id,items,explanation,version")
-        .eq("user_id", userId)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      setRecommendation((data as RecommendationRow | null) ?? null);
+      setLoadingRecommendation(true);
+      try {
+        const { data } = await supabase
+          .from("recommendations")
+          .select("user_id,items,explanation,version")
+          .eq("user_id", userId)
+          .order("version", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        setRecommendation((data as RecommendationRow | null) ?? null);
+      } finally {
+        setLoadingRecommendation(false);
+      }
     };
 
     void fetchRecommendation();
@@ -115,61 +136,34 @@ export default function ResultsPage() {
     };
   }, [userId]);
 
-  const buildProvisional = async () => {
-    if (!userId) return;
-
-    const [{ data: users }, { data: genreRows }, { data: movieRows }] = await Promise.all([
-      supabase.from("users_temp").select("id,name"),
-      supabase.from("user_genres").select("user_id,genre_id"),
-      supabase.from("user_movie_choices").select("user_id,movie_id"),
-    ]);
-
-    const choicesMap: Record<string, Choices> = {};
-    ((users as User[]) ?? []).forEach((user) => {
-      choicesMap[user.id] = { genres: [], movies: [] };
-    });
-
-    ((genreRows as { user_id: string; genre_id: number }[]) ?? []).forEach((row) => {
-      if (!choicesMap[row.user_id]) {
-        choicesMap[row.user_id] = { genres: [], movies: [] };
-      }
-      choicesMap[row.user_id].genres.push(row.genre_id);
-    });
-
-    ((movieRows as { user_id: string; movie_id: number }[]) ?? []).forEach((row) => {
-      if (!choicesMap[row.user_id]) {
-        choicesMap[row.user_id] = { genres: [], movies: [] };
-      }
-      choicesMap[row.user_id].movies.push(row.movie_id);
-    });
-
-    const generated = generateRecommendationsForAll((users as User[]) ?? [], movies, choicesMap, {
-      minUsersForCF: Number(process.env.NEXT_PUBLIC_MIN_USERS_FOR_CF ?? 5),
-      topK: Number(process.env.NEXT_PUBLIC_TOP_K ?? 5),
-    });
-
-    const mine = generated.find((entry) => entry.user_id === userId);
-    if (!mine) return;
-    setProvisional({ items: mine.items, explanation: mine.explanation });
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-100 via-brand-50 to-white">
+    <div className="min-h-screen">
       <Header />
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
-        <section className="rounded-2xl bg-white p-6 shadow-md">
+        <section className="surface reveal-up rounded-2xl p-6 shadow-2xl shadow-black/20">
           <h2 className="text-xl font-bold text-brand-900">Estado en vivo</h2>
-          <p className="mt-2 text-brand-700">Participantes conectados: {participants}</p>
+          {loadingOverview ? (
+            <p className="mt-2 flex items-center gap-2 text-brand-700">
+              <Spinner size="sm" /> Cargando estado en vivo...
+            </p>
+          ) : (
+            <p className="mt-2 text-brand-700">Participantes conectados: {participants}</p>
+          )}
           <div className="mt-2 text-sm text-brand-700">
             {Object.entries(genreCounts).map(([genreId, count]) => (
               <p key={genreId}>
-                Género {genreId}: {count} participantes
+                {genreNames[Number(genreId)] ?? `Género ${genreId}`}: {count} participantes
               </p>
             ))}
           </div>
-          {!recommendation ? (
+          {!recommendation && !loadingRecommendation ? (
             <p className="mt-3 rounded-lg bg-brand-100 p-3 text-brand-800">
               Esperando a admin para generar recomendaciones.
+            </p>
+          ) : null}
+          {loadingRecommendation ? (
+            <p className="mt-3 flex items-center gap-2 rounded-lg bg-brand-100 p-3 text-brand-800">
+              <Spinner size="sm" /> Actualizando recomendaciones...
             </p>
           ) : null}
         </section>
@@ -180,27 +174,6 @@ export default function ResultsPage() {
           explanation={recommendation?.explanation ?? []}
           movies={movies}
         />
-
-        <section className="rounded-2xl bg-white p-6 shadow-md">
-          <button
-            type="button"
-            aria-label="Generar recomendación provisional"
-            onClick={buildProvisional}
-            className="rounded-lg bg-brand-700 px-4 py-2 font-semibold text-white hover:bg-brand-800"
-          >
-            Ver recomendación provisional local (CB)
-          </button>
-          {provisional ? (
-            <div className="mt-4">
-              <RecommendationsCard
-                title="Provisional local"
-                items={provisional.items}
-                explanation={provisional.explanation}
-                movies={movies}
-              />
-            </div>
-          ) : null}
-        </section>
       </main>
       <Footer />
     </div>

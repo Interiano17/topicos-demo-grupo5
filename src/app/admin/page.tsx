@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AdminGraph } from "@/components/AdminGraph";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
+import { Spinner } from "@/components/Spinner";
 import { supabase } from "@/lib/supabaseClient";
 
 type User = { id: string; name: string; created_at: string };
@@ -18,6 +19,8 @@ export default function AdminPage() {
   const [similarityThreshold, setSimilarityThreshold] = useState<number>(
     Number(process.env.NEXT_PUBLIC_SIMILARITY_THRESHOLD ?? 0.3),
   );
+  const [loadingData, setLoadingData] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const userStats = useMemo(() => {
@@ -29,18 +32,23 @@ export default function AdminPage() {
   }, [users, genreChoices, movieChoices]);
 
   const loadData = async () => {
-    const [{ data: userRows }, { data: genreRows }, { data: movieRows }] = await Promise.all([
-      supabase
-        .from("users_temp")
-        .select("id,name,created_at")
-        .order("created_at", { ascending: false }),
-      supabase.from("user_genres").select("user_id,genre_id"),
-      supabase.from("user_movie_choices").select("user_id,movie_id"),
-    ]);
+    setLoadingData(true);
+    try {
+      const [{ data: userRows }, { data: genreRows }, { data: movieRows }] = await Promise.all([
+        supabase
+          .from("users_temp")
+          .select("id,name,created_at")
+          .order("created_at", { ascending: false }),
+        supabase.from("user_genres").select("user_id,genre_id"),
+        supabase.from("user_movie_choices").select("user_id,movie_id"),
+      ]);
 
-    setUsers((userRows as User[]) ?? []);
-    setGenreChoices((genreRows as GenreChoice[]) ?? []);
-    setMovieChoices((movieRows as MovieChoice[]) ?? []);
+      setUsers((userRows as User[]) ?? []);
+      setGenreChoices((genreRows as GenreChoice[]) ?? []);
+      setMovieChoices((movieRows as MovieChoice[]) ?? []);
+    } finally {
+      setLoadingData(false);
+    }
   };
 
   useEffect(() => {
@@ -72,81 +80,114 @@ export default function AdminPage() {
 
   const callAdminEndpoint = async (path: string) => {
     setMessage(null);
-    const response = await fetch(path, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-admin-key": adminKey,
-      },
-    });
+    setActionLoading(path);
+    try {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey,
+        },
+      });
 
-    const payload = (await response.json()) as {
-      ok?: boolean;
-      message?: string;
-      processed?: number;
-      version?: number;
-    };
-    if (!response.ok) {
-      setMessage(payload.message ?? "Acción fallida");
-      return;
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        message?: string;
+        processed?: number;
+        version?: number;
+      };
+      if (!response.ok) {
+        setMessage(payload.message ?? "Acción fallida");
+        return;
+      }
+
+      setMessage(
+        payload.message ??
+          (payload.version
+            ? `Proceso completado. Versión ${payload.version} para ${payload.processed} usuarios.`
+            : "Acción completada."),
+      );
+      void loadData();
+    } finally {
+      setActionLoading(null);
     }
-
-    setMessage(
-      payload.message ??
-        (payload.version
-          ? `Proceso completado. Versión ${payload.version} para ${payload.processed} usuarios.`
-          : "Acción completada."),
-    );
-    void loadData();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-100 via-brand-50 to-white">
+    <div className="min-h-screen">
       <Header />
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8">
-        <section className="rounded-2xl bg-white p-6 shadow-md">
+        <section className="surface reveal-up rounded-2xl p-6 shadow-2xl shadow-black/20">
           <h2 className="text-xl font-bold text-brand-900">Panel de administración</h2>
-          <p className="mt-2 text-brand-700">Ingresa la clave para ejecutar acciones protegidas.</p>
+          <p className="mt-2 text-brand-700">Clave para ejecutar acciones protegidas.</p>
           <input
             type="password"
             aria-label="Clave de administrador"
             value={adminKey}
             onChange={(event) => setAdminKey(event.target.value)}
-            className="mt-3 w-full rounded-lg border border-brand-300 px-4 py-3 outline-none focus:border-brand-500"
+            className="mt-3 w-full rounded-xl border border-brand-300 bg-brand-100/70 px-4 py-3 text-brand-900 outline-none focus:border-primary-500"
             placeholder="ADMIN_KEY"
           />
 
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               type="button"
-              className="rounded-lg bg-brand-700 px-4 py-2 font-semibold text-white hover:bg-brand-800"
+              disabled={actionLoading !== null}
+              className="btn-primary flex items-center gap-2 rounded-xl px-4 py-2 font-semibold transition disabled:opacity-70"
               onClick={() => void callAdminEndpoint("/api/generate-recommendations")}
             >
-              Generar recomendaciones
+              {actionLoading === "/api/generate-recommendations" ? (
+                <>
+                  <Spinner size="sm" /> Procesando...
+                </>
+              ) : (
+                "Generar recomendaciones"
+              )}
             </button>
             <button
               type="button"
-              className="rounded-lg bg-red-700 px-4 py-2 font-semibold text-white hover:bg-red-800"
+              disabled={actionLoading !== null}
+              className="btn-danger flex items-center gap-2 rounded-xl px-4 py-2 font-semibold transition disabled:opacity-70"
               onClick={() => void callAdminEndpoint("/api/admin-clear")}
             >
-              Borrar datos
+              {actionLoading === "/api/admin-clear" ? (
+                <>
+                  <Spinner size="sm" /> Borrando...
+                </>
+              ) : (
+                "Borrar datos"
+              )}
             </button>
             <button
               type="button"
-              className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white hover:bg-emerald-800"
+              disabled={actionLoading !== null}
+              className="btn-info flex items-center gap-2 rounded-xl px-4 py-2 font-semibold transition disabled:opacity-70"
               onClick={() => void callAdminEndpoint("/api/admin-load-demo")}
             >
-              Cargar dataset demo
+              {actionLoading === "/api/admin-load-demo" ? (
+                <>
+                  <Spinner size="sm" /> Cargando...
+                </>
+              ) : (
+                "Cargar dataset demo"
+              )}
             </button>
           </div>
 
           {message ? (
-            <p className="mt-3 rounded-lg bg-brand-100 p-3 text-brand-800">{message}</p>
+            <p className="mt-3 rounded-lg border border-primary-500/45 bg-primary-700/18 p-3 text-brand-900">
+              {message}
+            </p>
           ) : null}
         </section>
 
-        <section className="rounded-2xl bg-white p-6 shadow-md">
+        <section className="surface rounded-2xl p-6 shadow-2xl shadow-black/20">
           <h3 className="text-lg font-bold text-brand-900">Usuarios activos</h3>
+          {loadingData ? (
+            <p className="mt-3 flex items-center gap-2 text-brand-700">
+              <Spinner size="sm" /> Cargando usuarios y selecciones...
+            </p>
+          ) : null}
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[500px] border-collapse">
               <thead>
@@ -160,10 +201,10 @@ export default function AdminPage() {
               <tbody>
                 {userStats.map((user) => (
                   <tr key={user.id} className="text-brand-700">
-                    <td className="border-b border-brand-100 py-2">{user.name}</td>
-                    <td className="border-b border-brand-100 py-2">{user.id.slice(0, 8)}</td>
-                    <td className="border-b border-brand-100 py-2">{user.genresCount}</td>
-                    <td className="border-b border-brand-100 py-2">{user.moviesCount}</td>
+                    <td className="border-b border-brand-200 py-2">{user.name}</td>
+                    <td className="border-b border-brand-200 py-2">{user.id.slice(0, 8)}</td>
+                    <td className="border-b border-brand-200 py-2">{user.genresCount}</td>
+                    <td className="border-b border-brand-200 py-2">{user.moviesCount}</td>
                   </tr>
                 ))}
               </tbody>
@@ -171,11 +212,11 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl bg-white p-6 shadow-md">
+        <section className="surface rounded-2xl p-6 shadow-2xl shadow-black/20">
           <h3 className="text-lg font-bold text-brand-900">Grafo de similitud</h3>
           <div className="mt-2 flex items-center gap-3">
             <label htmlFor="threshold" className="text-sm text-brand-700">
-              Threshold
+              Umbral
             </label>
             <input
               id="threshold"
@@ -185,15 +226,23 @@ export default function AdminPage() {
               step={0.05}
               value={similarityThreshold}
               onChange={(event) => setSimilarityThreshold(Number(event.target.value))}
-              className="w-24 rounded border border-brand-300 px-2 py-1"
+              className="w-24 rounded border border-brand-300 bg-brand-100/65 px-2 py-1 text-brand-900 outline-none focus:border-primary-500"
             />
           </div>
           <div className="mt-4">
-            <AdminGraph
-              users={users}
-              choices={movieChoices}
-              similarityThreshold={similarityThreshold}
-            />
+            {loadingData ? (
+              <div className="flex h-[340px] items-center justify-center rounded-xl border border-brand-300 bg-brand-100/50 text-brand-700">
+                <span className="flex items-center gap-2">
+                  <Spinner /> Preparando grafo...
+                </span>
+              </div>
+            ) : (
+              <AdminGraph
+                users={users}
+                choices={movieChoices}
+                similarityThreshold={similarityThreshold}
+              />
+            )}
           </div>
         </section>
       </main>

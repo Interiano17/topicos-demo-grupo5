@@ -78,6 +78,9 @@ CB_WEIGHT=0.25
 POPULARITY_WEIGHT=0.05
 SIMILARITY_THRESHOLD=0.3
 TOP_K_RECOMMEND=5
+TMDB_API_KEY=
+# o alternativamente
+TMDB_BEARER_TOKEN=
 ```
 
 Importante:
@@ -94,6 +97,21 @@ npm install
 ```
 
 2. Ejecuta SQL base y seed en Supabase SQL Editor con `scripts/seed_movies.sql`.
+
+Notas de catalogo:
+
+- La tabla `movies` incluye `image_url` para mostrar poster en la UI.
+- El seed no rellena posters automaticamente para evitar datos placeholder.
+- Puedes mapear posters reales desde TMDB con `npm run posters:tmdb`.
+- Ese comando genera `scripts/update_movie_posters.sql`; ejecutalo en Supabase SQL Editor.
+
+Si el comando falla por credenciales:
+
+```bash
+TMDB_API_KEY=tu_api_key npm run posters:tmdb
+```
+
+Tambien puedes guardar `TMDB_API_KEY` o `TMDB_BEARER_TOKEN` en `.env.local`.
 
 3. Inicia desarrollo:
 

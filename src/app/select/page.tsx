@@ -6,6 +6,7 @@ import { Footer } from "@/components/Footer";
 import { GenreSelector } from "@/components/GenreSelector";
 import { Header } from "@/components/Header";
 import { MovieGrid } from "@/components/MovieGrid";
+import { Spinner } from "@/components/Spinner";
 import type { Movie } from "@/lib/recommendationEngine";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -20,6 +21,7 @@ export default function SelectPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [selectedMovies, setSelectedMovies] = useState<number[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -34,16 +36,26 @@ export default function SelectPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data: genresData } = await supabase
-        .from("genres")
-        .select("id,name")
-        .order("id", { ascending: true });
-      const { data: moviesData } = await supabase
-        .from("movies")
-        .select("id,title,genre_id,tags,popularity")
-        .order("id", { ascending: true });
-      setGenres((genresData as Genre[]) ?? []);
-      setMovies((moviesData as Movie[]) ?? []);
+      setLoadingCatalog(true);
+      try {
+        const [{ data: genresData, error: genresError }, { data: moviesData, error: moviesError }] =
+          await Promise.all([
+            supabase.from("genres").select("id,name").order("id", { ascending: true }),
+            supabase
+              .from("movies")
+              .select("id,title,genre_id,tags,popularity,image_url")
+              .order("id", { ascending: true }),
+          ]);
+
+        if (genresError || moviesError) {
+          setMessage("No se pudo cargar el catálogo. Intenta recargar la página.");
+        } else {
+          setGenres((genresData as Genre[]) ?? []);
+          setMovies((moviesData as Movie[]) ?? []);
+        }
+      } finally {
+        setLoadingCatalog(false);
+      }
     };
     void load();
   }, []);
@@ -94,60 +106,83 @@ export default function SelectPage() {
 
     setSaving(true);
     setMessage(null);
+    try {
+      await supabase.from("user_genres").delete().eq("user_id", userId);
+      await supabase.from("user_movie_choices").delete().eq("user_id", userId);
 
-    await supabase.from("user_genres").delete().eq("user_id", userId);
-    await supabase.from("user_movie_choices").delete().eq("user_id", userId);
+      const genresPayload = selectedGenres.map((genre_id) => ({ user_id: userId, genre_id }));
+      const moviesPayload = selectedMovies.map((movie_id) => ({ user_id: userId, movie_id }));
 
-    const genresPayload = selectedGenres.map((genre_id) => ({ user_id: userId, genre_id }));
-    const moviesPayload = selectedMovies.map((movie_id) => ({ user_id: userId, movie_id }));
+      const { error: genresError } = await supabase.from("user_genres").insert(genresPayload);
+      const { error: moviesError } = await supabase
+        .from("user_movie_choices")
+        .insert(moviesPayload);
 
-    const { error: genresError } = await supabase.from("user_genres").insert(genresPayload);
-    const { error: moviesError } = await supabase.from("user_movie_choices").insert(moviesPayload);
+      if (genresError || moviesError) {
+        setMessage("No se pudieron guardar tus preferencias. Intenta nuevamente.");
+        return;
+      }
 
-    setSaving(false);
-
-    if (genresError || moviesError) {
-      setMessage("No se pudieron guardar tus preferencias. Intenta nuevamente.");
-      return;
+      router.push("/results");
+    } finally {
+      setSaving(false);
     }
-
-    router.push("/results");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-100 via-brand-50 to-white">
+    <div className="min-h-screen">
       <Header />
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
-        <div className="rounded-2xl bg-white p-6 shadow-md">
+        <div className="surface reveal-up rounded-2xl p-6 shadow-2xl shadow-black/20">
           <h2 className="text-xl font-bold text-brand-900">Configura tus gustos</h2>
           <p className="mt-2 text-brand-700">
             Selecciona géneros y películas para alimentar el motor didáctico.
           </p>
           {userId ? (
-            <p className="mt-2 text-sm text-brand-600">Tu ID demo: {userId.slice(0, 8)}</p>
+            <p className="mt-2 text-sm text-brand-600">Tu ID: {userId.slice(0, 8)}</p>
           ) : null}
         </div>
 
-        <GenreSelector genres={genres} selected={selectedGenres} onToggle={toggleGenre} />
-        <MovieGrid
-          movies={movies}
-          genres={genres}
-          selectedGenres={selectedGenres}
-          selectedMovies={selectedMovies}
-          maxPerGenre={MAX_PER_GENRE}
-          onToggleMovie={toggleMovie}
-        />
+        {loadingCatalog ? (
+          <div className="surface flex items-center gap-3 rounded-2xl p-6 text-brand-700">
+            <Spinner />
+            Cargando catálogo de películas...
+          </div>
+        ) : (
+          <>
+            <GenreSelector genres={genres} selected={selectedGenres} onToggle={toggleGenre} />
+            <MovieGrid
+              movies={movies}
+              genres={genres}
+              selectedGenres={selectedGenres}
+              selectedMovies={selectedMovies}
+              maxPerGenre={MAX_PER_GENRE}
+              onToggleMovie={toggleMovie}
+            />
+          </>
+        )}
 
-        {message ? <p className="rounded-lg bg-red-100 p-3 text-red-700">{message}</p> : null}
+        {message ? (
+          <p className="rounded-lg border border-primary-500/45 bg-primary-700/18 p-3 text-brand-900">
+            {message}
+          </p>
+        ) : null}
 
         <button
           type="button"
           aria-label="Guardar preferencias"
           onClick={handleFinish}
-          disabled={saving}
-          className="w-full rounded-lg bg-brand-700 px-5 py-3 font-semibold text-white hover:bg-brand-800 disabled:opacity-70"
+          disabled={saving || loadingCatalog}
+          className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold transition disabled:opacity-70"
         >
-          {saving ? "Guardando..." : "Terminar"}
+          {saving ? (
+            <>
+              <Spinner size="sm" />
+              Guardando...
+            </>
+          ) : (
+            "Terminar"
+          )}
         </button>
       </main>
       <Footer />
