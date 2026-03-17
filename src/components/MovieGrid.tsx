@@ -26,7 +26,7 @@ export function MovieGrid({
   }
 
   return (
-    <section className="surface reveal-up space-y-4 rounded-2xl p-6 shadow-2xl shadow-black/20">
+    <section className="surface reveal-up space-y-4 rounded-2xl p-4 shadow-2xl shadow-black/20 sm:p-6">
       <h2 className="text-lg font-bold text-brand-900">
         2) Elige películas (máx {maxPerGenre} por género)
       </h2>
@@ -38,7 +38,10 @@ export function MovieGrid({
         ).length;
 
         return (
-          <div key={genreId} className="rounded-xl border border-brand-300 bg-brand-100/45 p-4">
+          <div
+            key={genreId}
+            className="rounded-xl border border-brand-300 bg-brand-100/45 p-3 sm:p-4"
+          >
             <h3 className="font-semibold text-brand-800">
               {genre?.name ?? `Género ${genreId}`} ({selectedInGenre}/{maxPerGenre})
             </h3>
@@ -50,13 +53,13 @@ export function MovieGrid({
                 return (
                   <label
                     key={movie.id}
-                    className={`group flex cursor-pointer gap-4 rounded-xl border p-3 transition ${
+                    className={`group flex cursor-pointer items-start gap-3 rounded-xl border p-2.5 transition sm:gap-4 sm:p-3 ${
                       isChecked
                         ? "border-primary-500 bg-primary-500/18"
                         : "border-brand-300 bg-brand-100/70 hover:border-brand-500"
                     } ${disabled ? "opacity-50" : ""}`}
                   >
-                    <div className="relative h-32 w-24 overflow-hidden rounded-md border border-brand-300/70 bg-brand-200/70">
+                    <div className="relative h-28 w-20 shrink-0 overflow-hidden rounded-md border border-brand-300/70 bg-brand-200/70 sm:h-32 sm:w-24">
                       {movie.image_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -71,18 +74,23 @@ export function MovieGrid({
                         </div>
                       )}
                     </div>
-                    <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                      <span className="truncate text-base font-medium text-brand-900">
+                    <div className="flex min-w-0 flex-1 flex-col justify-between gap-2">
+                      <span className="text-sm font-semibold leading-snug text-brand-900 sm:text-base">
                         {movie.title}
                       </span>
-                      <input
-                        aria-label={`Seleccionar película ${movie.title}`}
-                        type="checkbox"
-                        checked={isChecked}
-                        disabled={disabled}
-                        onChange={() => onToggleMovie(movie)}
-                        className="h-4 w-4 accent-[var(--primary)]"
-                      />
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-medium text-brand-700">
+                          {isChecked ? "Seleccionada" : "Disponible"}
+                        </span>
+                        <input
+                          aria-label={`Seleccionar película ${movie.title}`}
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={disabled}
+                          onChange={() => onToggleMovie(movie)}
+                          className="h-5 w-5 accent-[var(--primary)]"
+                        />
+                      </div>
                     </div>
                   </label>
                 );

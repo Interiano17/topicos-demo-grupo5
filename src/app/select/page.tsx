@@ -132,9 +132,9 @@ export default function SelectPage() {
   return (
     <div className="min-h-screen">
       <Header />
-      <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
-        <div className="surface reveal-up rounded-2xl p-6 shadow-2xl shadow-black/20">
-          <h2 className="text-xl font-bold text-brand-900">Configura tus gustos</h2>
+      <main className="mx-auto max-w-5xl space-y-5 px-3 py-5 sm:space-y-6 sm:px-4 sm:py-8">
+        <div className="surface reveal-up rounded-2xl p-4 shadow-2xl shadow-black/20 sm:p-6">
+          <h2 className="text-lg font-bold text-brand-900 sm:text-xl">Configura tus gustos</h2>
           <p className="mt-2 text-brand-700">
             Selecciona géneros y películas para alimentar el motor didáctico.
           </p>
@@ -144,7 +144,7 @@ export default function SelectPage() {
         </div>
 
         {loadingCatalog ? (
-          <div className="surface flex items-center gap-3 rounded-2xl p-6 text-brand-700">
+          <div className="surface flex items-center gap-3 rounded-2xl p-4 text-brand-700 sm:p-6">
             <Spinner />
             Cargando catálogo de películas...
           </div>
@@ -168,22 +168,24 @@ export default function SelectPage() {
           </p>
         ) : null}
 
-        <button
-          type="button"
-          aria-label="Guardar preferencias"
-          onClick={handleFinish}
-          disabled={saving || loadingCatalog}
-          className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold transition disabled:opacity-70"
-        >
-          {saving ? (
-            <>
-              <Spinner size="sm" />
-              Guardando...
-            </>
-          ) : (
-            "Terminar"
-          )}
-        </button>
+        <div className="sticky bottom-3 z-20 pt-1 sm:static sm:pt-0">
+          <button
+            type="button"
+            aria-label="Guardar preferencias"
+            onClick={handleFinish}
+            disabled={saving || loadingCatalog}
+            className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 font-semibold shadow-xl shadow-black/30 transition disabled:opacity-70"
+          >
+            {saving ? (
+              <>
+                <Spinner size="sm" />
+                Guardando...
+              </>
+            ) : (
+              "Terminar"
+            )}
+          </button>
+        </div>
       </main>
       <Footer />
     </div>
